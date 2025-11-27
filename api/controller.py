@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from google_auth_oauthlib.flow import Flow
 from starlette.responses import RedirectResponse, HTMLResponse
 
@@ -19,7 +19,7 @@ async def login(telegram_id: int):
     flow = Flow.from_client_secrets_file(
         config.GMAIL_MAIN_CREDENTIALS_PATH,
         scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-        redirect_uri=f'{config.HOST}oauth2callback/',
+        redirect_uri=f'{config.BASE_URL}oauth2callback',
     )
     auth_url, _ = flow.authorization_url(
         access_type="offline",
@@ -27,21 +27,29 @@ async def login(telegram_id: int):
         state=str(telegram_id),
         prompt="consent",
     )
+    print(auth_url)
     return RedirectResponse(auth_url)
 
 
 @router.get("/oauth2callback")
-async def oauth2_callback(state: str,
-                          code: str,
-                          credentials_provider: Annotated[CredentialsProvider, Depends(CredentialsProvider)]):
+async def oauth2_callback(
+        credentials_provider: Annotated[CredentialsProvider, Depends(CredentialsProvider)],
+        request: Request,
+        state: str = None,
+        code: str = None,
+        error: str = None,
+):
     if not state or not code:
+        print(f'{error=}')
         return HTMLResponse("<h3>Missing state or code</h3>", status_code=400)
     telegram_id = state
     flow = Flow.from_client_secrets_file(
         config.GMAIL_MAIN_CREDENTIALS_PATH,
         scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-        redirect_uri=f'{config.HOST}oauth2callback/',
+        redirect_uri=f'{config.BASE_URL}oauth2callback',
     )
+    print(f'{request.url=}')
+    flow.fetch_token(authorization_response=str(request.url))
     creds = flow.credentials
     await credentials_provider.save_credentials(telegram_id, creds)
     return HTMLResponse("<h3>Authentication successful</h3><p>You can close this page and return to Telegram.</p>")
